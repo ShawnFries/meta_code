@@ -1,0 +1,176 @@
+---
+title: "metaforExamples"
+author: "Bo Wang"
+date: "10/4/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressMessages(library(metafor))
+```
+
+### Examples from metafor-project.org
+
+### Miller (1978) 
+Create raw data and calculate transformed yi and vi.
+```{r}
+dat <- data.frame(xi=c(3, 6, 10, 1), ni=c(11, 17, 21, 6))
+dat$pi <- with(dat, xi/ni)
+dat <- escalc(measure="PFT", xi=xi, ni=ni, data=dat)
+dat
+#?escalc
+```
+
+Back transformation to raw proportions.
+```{r}
+transf.ipft(dat$yi, dat$ni)
+#?trans.ipft
+```
+
+
+#### Meta-analysis of transformed proportions. 
+
+1) Unweighted: the same as arithmetic mean of yi.
+```{r}
+res <- rma(yi, vi, method="FE", data=dat, weighted=FALSE)
+res
+
+coef(res)
+mean(dat$yi)
+```
+
+Back-transform the estimate to linear scale. 
+
+To back-transform the average, a value for the sample size is needed. Miller suggests to use the harmonic mean of the individual sample sizes in the inversion formula.
+
+```{r}
+predict(res, transf=transf.ipft.hm, targs=list(ni=dat$ni))
+```
+
+Therefore, the estimated true proportion based on the 4 studies is 0.32 (with 95% CI: 0.18 to 0.47).
+
+# Question: how is the variance of back-transformed? Mathematically?
+
+
+2) Weighted: by weights = inverse of variance.
+
+# Question: why need to be homogeneous? What's Q(3) and p?
+
+Since the true proportions appear to be homogeneous (e.g., Q(3)=2.18, p=0.54), a more efficient estimate of the true proportion can be obtained by using inverse-variance weights.
+
+```{r}
+res2 <- rma(yi, vi, method="FE", data=dat, weighted=TRUE)
+res2
+
+coef(res2)
+sum(dat$yi*(1/dat$vi))/sum(1/dat$vi)
+```
+
+Back-transform the estimated transformed average.
+```{r}
+predict(res2, transf=transf.ipft.hm, targs=list(ni=dat$ni))
+```
+Therefore, the estimated true proportion is now equal to 0.36 (with 95% CI: 0.23 to 0.50).
+
+#### Proportions equal to 0 or 1. 
+
+When proportion=0 or 1, the variance of the untransformed proportion=np(1-p)=0, then the weight=1/variance=inf. If use logit transformation, logit(proportion)=log(proportion/1-proportion)=log(inf/-inf). Normal solution: add 0.5 to n of event. Fine if there are just a few extreme cases, but if the event is rare/common in general, need Freeman-Tukey transformation. 
+
+```{r}
+dat <- data.frame(xi=c(0,10), ni=c(10,10))
+dat$pi <- with(dat, xi/ni)
+##add=0 to specify no correction
+dat <- escalc(measure="PFT", xi=xi, ni=ni, data=dat, add=0)
+#dat2 <- escalc(measure="PFT", xi=xi, ni=ni, data=dat)
+dat
+#dat2
+```
+Back transformation.
+```{r}
+transf.ipft(dat$yi, dat$ni)
+```
+
+
+#### Forest plot
+
+Create some data and calculated Freeman-Tukey transformed proportion and variance.
+```{r}
+dat <- data.frame(xi = c( 0,  4,  9, 16, 20),
+                  ni = c(10, 10, 15, 20, 20))
+dat$pi <- with(dat, xi/ni)
+dat <- escalc(measure="PFT", xi=xi, ni=ni, data=dat, add=0)
+dat
+```
+
+To obtain original proportions by back-transformation, we need individual study sample sizes.
+```{r}
+transf.ipft(dat$yi, dat$ni)
+```
+
+Calculate the weighted average and back transform the weighted average using the harmonic mean of the study sample sizes.
+```{r}
+res<-rma(yi, vi, method="FE", data=dat)
+res
+
+pred<-predict(res, transf=transf.ipft.hm, targs=list(ni=dat$ni))
+pred
+```
+
+So the back-transformed estimated weighted average is 0.689 with CI (0.573, 0,794).
+
+If we now want to draw a forest plot that includes not only the individual back-transformed proportions, but also the back-transformed average, things get complicated. If we use the following code, the resulting forest plot also uses the harmonic mean of the sample sizes for the back-transformation of the individual transformed proportions, which is not right.
+
+```{r}
+forest(res, transf=transf.ipft.hm, targs=list(ni=dat$ni), alim=c(0,1), refline=NA, digits=3)
+```
+
+In stead, we need to first obtain the CI bounds of the individual studies.
+```{r}
+dat.back <- summary(dat, transf=transf.ipft, ni=dat$ni)
+dat.back
+```
+
+Now the back-transformation is applied to each transformed proportion with the study-specific sample sizes. The yi values are now the back-transformed values (i.e., the raw proportions) and the ci.lb and ci.ub values are the back-transformed 95% CI bounds.1)
+
+Finally, we can create the forest plot by directly passing the observed outcomes (i.e., proportions) and the CI bounds to the function. Then the back-transformed average with the corresponding CI bounds obtained earlier can be added to the plot with the addpoly() function. We add a couple tweaks to make the final forest plot look nice:
+
+```{r}
+forest(dat.back$yi, ci.lb=dat.back$ci.lb, ci.ub=dat.back$ci.ub, psize=1,
+       xlim=c(-0.5,1.8), alim=c(0,1), ylim=c(-1,8), refline=NA, digits=3, xlab="Proportion")
+addpoly(pred$pred, ci.lb=pred$ci.lb, ci.ub=pred$ci.ub, row=-0.5, digits=3, mlab="FE Model", efac=1.3)
+abline(h=0.5)
+text(-0.5, 7, "Study",               pos=4)
+text( 1.8, 7, "Proportion [95% CI]", pos=2)
+```
+
+
+
+#### 2 X 2 tables
+```{r}
+dat <- data.frame(
+age = c("Age <55", "Age 55+"),
+ai = c(8,22),
+bi = c(98,76),
+ci = c(5,16),
+di = c(115,69))
+dat
+```
+
+Stratum-Specific and Crude Risk Differences
+
+The stratum-specific risk differences can be computed with:
+```{r}
+summary(escalc(ai=ai, bi=bi, ci=ci, di=di, data=dat, measure="RD", digits=3, append=FALSE))
+```
+
+On the other hand, the crude risk difference for these data can be obtained with:
+```{r}
+summary(escalc(ai=sum(ai), bi=sum(bi), ci=sum(ci), di=sum(di), data=dat, measure="RD", digits=3, append=FALSE))
+```
+
+
+

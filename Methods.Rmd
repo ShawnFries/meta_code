@@ -1,0 +1,277 @@
+---
+title: "Methods"
+author: "Bo Wang"
+date: "10/4/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressMessages(library(metafor))
+```
+
+```{r}
+#sample data for proportions (from metafor package see doc of "escalc")
+#dat <- dat.pritz1997
+dat <- data.frame(xi=c(3, 6, 10, 0), ni=c(11, 17, 21, 6))
+dat$pi <- with(dat, xi/ni)
+dat
+
+write.csv(dat, file = "dat.csv")
+
+#sample data for rates (from metafor-project.org: http://www.metafor-project.org/doku.php/analyses:stijnen2010)
+datr <- data.frame(
+         age = c("35-44", "45-54", "55-64", "65-74", "75-84"),
+         x1i = c(32, 104, 206, 186, 102),
+         t1i = c(52407, 43248, 28612, 12663, 5317) / 10000)#,
+         # x2i = c(2, 12, 28, 28, 31),
+         # t2i = c(18790, 10673, 5710, 2585, 1462) / 10000)
+datr
+```
+
+1. Discrete likelihood methods, which model the proportion of events or the incidence rate in a study using the binomial or Poisson distribution, respectively. These are theoretically motivated choices.
+
+```{r}
+#reference:http://www.metafor-project.org/doku.php/analyses:stijnen2010
+
+#proportions: binomial-normal 
+#fixed effect
+res.bin.fe <- rma.glmm(measure="PLO", method="FE", xi=xi, ni=ni, data=dat)
+res.bin.fe
+predict(res.bin.fe, transf=transf.ilogit)
+
+#forest plot
+forest(res.bin.fe)
+forest(res.bin.fe, transf=transf.ilogit)
+
+#first calculate yi and SEi: won't work
+#dat.bin.fe <- escalc(measure="PLO", xi=xi, ni=ni, data=dat)
+#res.bin.fe.alt <- rma.glmm(method="FE", yi=yi, vi=vi, data=dat.bin.fe, measure="PLO")
+
+#random effect
+res.bin.ml <- rma.glmm(measure="PLO", method="ML", xi=xi, ni=ni, data=dat)
+res.bin.ml
+predict(res.bin.ml, transf=transf.ilogit)
+```
+
+```{r}
+#rates: poisson-normal 
+#fixed effect
+res.pois.fe <- rma.glmm(measure="IRLN", method="FE", xi=x1i, ti=t1i, data=datr)
+res.pois.fe
+predict(res.pois.fe, transf=exp)
+
+#random effect
+res.pois.ml <- rma.glmm(measure="IRLN", method="ML", xi=x1i, ti=t1i, data=datr)
+res.pois.ml
+predict(res.pois.ml, transf=exp)
+```
+
+
+2. Approximate methods, which approximate within-study variability with a normal distribution. Of the many variants that have been used, the three that are most interestinga use a normal distribution to approximate the distribution of:
+
+a. Untransformed proportions or rates.
+```{r}
+#proportions:
+#no transformation (with correction factor)
+#note that yi =/= pi when pi = 1 b/c correction
+dat.raw <- escalc(measure="PR", xi=xi, ni=ni, data=dat)
+dat.raw
+
+#fixed effect: inverse variance
+res.raw.fe<-rma(yi, vi, method="FE", data=dat.raw, weighted=TRUE)
+res.raw.fe
+c(pred=coef(res.raw.fe), ci.lb=res.raw.fe$ci.lb, ci.up=res.raw.fe$ci.ub)
+
+#random effect: DL
+res.raw.dl<-rma(yi, vi, method="DL", data=dat.raw)
+res.raw.dl
+c(pred=coef(res.raw.dl), ci.lb=res.raw.dl$ci.lb, ci.up=res.raw.dl$ci.ub)
+```
+
+```{r}
+#rates:
+#no transformation 
+datr.raw <- escalc(measure="IR", xi=x1i, ti=t1i, data=datr)
+datr.raw
+
+#fixed effect: inverse variance
+resr.raw.fe<-rma(yi, vi, method="FE", data=datr.raw, weighted=TRUE)
+resr.raw.fe
+c(pred=coef(resr.raw.fe), ci.lb=resr.raw.fe$ci.lb, ci.up=resr.raw.fe$ci.ub)
+
+#random effect: DL
+resr.raw.dl<-rma(yi, vi, method="DL", data=datr.raw)
+resr.raw.dl
+c(pred=coef(resr.raw.dl), ci.lb=resr.raw.dl$ci.lb, ci.up=resr.raw.dl$ci.ub)
+```
+
+b. Canonical transformations for proportions (logit transformations) and rates (logarithmic transformations).
+```{r}
+#proportions:
+#logit transformation (with correction factor)
+dat.logit <- escalc(measure="PLO", xi=xi, ni=ni, data=dat)
+dat.logit
+
+#back-transformation of individual estimates
+#note that the back-transformed individual proportion =/= pi when pi = 1 b/c correction
+transf.ilogit(dat.logit$yi, dat.logit$ni)
+
+#fixed effect: inverse variance
+res.logit.fe<-rma(yi, vi, method="FE", data=dat.logit, weighted=TRUE)
+res.logit.fe
+
+#back-transformation of average estimate: FE
+predict(res.logit.fe, transf=transf.ilogit)
+
+#random effect: DL
+res.logit.dl<-rma(yi, vi, method="DL", data=dat.logit)
+res.logit.dl
+
+#back-transformation of average estimate: DL
+predict(res.logit.dl, transf=transf.ilogit)
+```
+
+```{r}
+#rates:
+#log transformation 
+datr.log <- escalc(measure="IRLN", xi=x1i, ti=t1i, data=datr)
+datr.log
+
+#same as
+yi.log<-log(datr$x1i/datr$t1i)
+yi.log
+
+#fixed effect: inverse variance
+res.log.fe<-rma(yi, vi, method="FE", data=datr.log, weighted=TRUE)
+res.log.fe
+
+#back-transformation of average estimate: FE
+predict(res.log.fe, transf=exp)
+
+#random effect: DL
+res.log.dl<-rma(yi, vi, method="DL", data=datr.log)
+res.log.dl
+
+#back-transformation of average estimate: DL
+predict(res.log.dl, transf=exp)
+```
+
+c. Variance stabilizing transformations for proportions (arcsine transformations) and rates (square root transformations).
+```{r}
+#proportions:
+#arcsine square root transformation (without correction factor)
+dat.as <- escalc(measure="PAS", xi=xi, ni=ni, data=dat, add=0)
+dat.as
+
+#back-transformation of individual estimates: matched pi
+transf.iarcsin(dat.as$yi, dat.as$ni)
+
+#fixed effect: inverse variance
+res.as.fe<-rma(yi, vi, method="FE", data=dat.as, weighted=TRUE)
+res.as.fe
+
+#back-transformation of average estimate: FE
+predict(res.as.fe, transf=transf.iarcsin)
+
+#random effect: DL
+res.as.dl<-rma(yi, vi, method="DL", data=dat.as)
+res.as.dl
+
+#back-transformation of average estimate: DL
+predict(res.as.dl, transf=transf.iarcsin)
+```
+
+```{r}
+#freeman-tukey (without correction factor)
+dat.ft <- escalc(measure="PFT", xi=xi, ni=ni, data=dat, add=0)
+dat.ft
+
+#fixed effect
+res.ft.fe <- rma(yi, vi, method="FE", data=dat.ft)
+predict(res.ft.fe, transf=transf.ipft.hm, targs=list(ni=dat.ft$ni))
+
+#random effect
+res.ft.dl <- rma(yi, vi, method="DL", data=dat.ft)
+predict(res.ft.dl, transf=transf.ipft.hm, targs=list(ni=dat.ft$ni))
+```
+
+```{r}
+#rates:
+#square root transformation
+datr.sqrt <- escalc(measure="IRS", xi=x1i, ti=t1i, data=datr)
+datr.sqrt
+
+#same as
+sqrt(datr$x1i/datr$t1i)
+
+#fixed effect: inverse variance
+res.sqrt.fe<-rma(yi, vi, method="FE", data=datr.sqrt, weighted=TRUE)
+res.sqrt.fe
+
+#back-transformation of average estimate: FE
+predict(res.sqrt.fe, transf=transf.isqrt)
+
+#random effect: DL
+res.sqrt.dl<-rma(yi, vi, method="DL", data=datr.sqrt)
+res.sqrt.dl
+
+#back-transformation of average estimate: DL
+predict(res.sqrt.dl, transf=transf.isqrt)
+```
+
+#### Compare analysis results
+```{r}
+#proportions
+results.p<-round(rbind(as.numeric(as.character(unlist(predict(res.bin.fe, transf=transf.ilogit))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.bin.ml, transf=transf.ilogit))[c(1,3,4)])),
+                       c(pred=coef(res.raw.fe), ci.lb=res.raw.fe$ci.lb, ci.up=res.raw.fe$ci.ub),
+                       c(pred=coef(res.raw.dl), ci.lb=res.raw.dl$ci.lb, ci.up=res.raw.dl$ci.ub),
+                       as.numeric(as.character(unlist(predict(res.logit.fe, transf=transf.ilogit))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.logit.dl, transf=transf.ilogit))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.as.fe, transf=transf.iarcsin))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.as.dl, transf=transf.iarcsin))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.ft.fe, transf=transf.ipft.hm, targs=list(ni=dat.ft$ni)))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.ft.dl, transf=transf.ipft.hm, targs=list(ni=dat.ft$ni)))[c(1,3,4)]))), 3)
+
+rownames(results.p)<-c("Binom-normal FE logit", 
+                       "Binom-normal ML logit",
+                       "Untransformed FE",
+                       "Untransformed ML",
+                       "Logit FE",
+                       "Logit DL",
+                       "Arcsine FE",
+                       "Arcsine DL",
+                       "Freeman-Tukey FE",
+                       "Freeman-Tukey DL")
+
+results.p
+```
+
+```{r}
+#rates
+results.r<-round(rbind(as.numeric(as.character(unlist(predict(res.pois.fe, transf=exp))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.pois.ml, transf=exp))[c(1,3,4)])),
+                       c(pred=coef(resr.raw.fe), ci.lb=resr.raw.fe$ci.lb, ci.up=resr.raw.fe$ci.ub),
+                       c(pred=coef(resr.raw.dl), ci.lb=resr.raw.dl$ci.lb, ci.up=resr.raw.dl$ci.ub),
+                       as.numeric(as.character(unlist(predict(res.log.fe, transf=exp))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.log.dl, transf=exp))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.sqrt.fe, transf=transf.isqrt))[c(1,3,4)])),
+                       as.numeric(as.character(unlist(predict(res.sqrt.dl, transf=transf.isqrt))[c(1,3,4)]))
+                       ), 3)
+
+rownames(results.r)<-c("Pois-normal FE log", 
+                       "Pois-normal ML log",
+                       "Untransformed FE",
+                       "Untransformed ML",
+                       "Log FE",
+                       "Log DL",
+                       "Sqrt FE",
+                       "Sqrt DL")
+
+results.r
+```
+
+
+
+

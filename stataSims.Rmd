@@ -1,0 +1,32 @@
+---
+title: "stataSims"
+author: "Bo Wang"
+date: "10/7/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+dat<-X_scenario_88[1:5,]
+```
+
+
+a. Untransformed proportions: matches results in row 1, column 1:4 in X_results_88
+```{r}
+#no transformation (with correction factor)
+dat.raw <- escalc(measure="PR", xi=x_unif, ni=N, data=dat)
+dat.raw
+
+#fixed effect: inverse variance
+res.raw.fe<-rma(yi, vi, method="FE", data=dat.raw, weighted=TRUE)
+res.raw.fe
+c(pred=coef(res.raw.fe), ci.lb=res.raw.fe$ci.lb, ci.up=res.raw.fe$ci.ub)
+
+#random effect: DL
+res.raw.dl<-rma(yi, vi, method="DL", data=dat.raw)
+res.raw.dl
+c(pred=coef(res.raw.dl), ci.lb=res.raw.dl$ci.lb, ci.up=res.raw.dl$ci.ub)
+```
