@@ -1,5 +1,9 @@
 library(dplyr)
+library(readr)
+library(metafor)
 
+
+###glmm_fe
 ptm<-proc.time()
 
 bias=c()
@@ -30,13 +34,13 @@ res<-dat %>%
      select(-obj)
 
 ##scenario information
-scenario<-dat%>%
-          filter(!duplicated(dat$run)) %>%
-          select(-X1, -sample.sizes, -num.of.events)
+scenario_info<-dat%>%
+               filter(!duplicated(dat$run)) %>%
+               select(-X1, -sample.sizes, -num.of.events)
 ##scenario information joined with estimates of each run by "run"
-res<-left_join(scenario, res, by="run")
+res<-left_join(scenario_info, res, by="run")
 
-file.path<-paste0("sim_res/scenario_", res$scenario[1], "_glmm_fe_res.csv")
+file.path<-paste0("sim_res/glmm_fe/scenario_", res$scenario[1], "_glmm_fe_res.csv")
 write.csv(res, file=file.path)
 
 true.pii<-res$true.pi[1]
@@ -48,11 +52,29 @@ coverage[i]<-sum(res$ci.lb<=true.pii & res$ci.ub>=true.pii)/1000
 
 }#ends for(i in 792)
 
-metric<-data.frame(bias=bias,
-                   bias.prop=bias.prop,
-                   RMSE=RMSE,
-                   RMSE.prop=RMSE.prop,
-                   coverage=coverage)
+metrics<-data.frame(bias=bias,
+                    bias.prop=bias.prop,
+                    RMSE=RMSE,
+                    RMSE.prop=RMSE.prop,
+                    coverage=coverage)
+
+metrics<-cbind(scenarios, metrics)
+
+write.csv(metrics, file="sim_res/glmm_fe/metrics_glmm_fe.csv")
+
 
 proc.time()-ptm
+# user   system  elapsed 
+# 7736.858  160.744 7975.229 
+
+
+
+
+
+
+
+
+
+
+
 
